@@ -37,18 +37,21 @@ def auc_calc_probs(model, data, class3only=True):
   return true_class, scores
 
 #Function for loading the fulldataset to evaluate a model.
-def retrieve_full_dataset():
+def retrieve_full_dataset(separate_train_test = False):
   current_dir = os.getcwd()
   os.chdir(os.path.join('..', 'processed_data'))
   ord_data1 = np.load('9site_train.npy')
   ord_data2 = np.load('9site_test.npy')
-  ord_data = np.vstack([ord_data1, ord_data2])
 
   nom_data1 = np.load('9site_nominal_class_train.npy')
   nom_data2 = np.load('9site_nominal_class_test.npy')
-  nom_data = np.vstack([nom_data1, nom_data2])
   os.chdir(current_dir)
-  return ord_data, nom_data
+  if separate_train_test == False:
+    ord_data = np.vstack([ord_data1, ord_data2])
+    nom_data = np.vstack([nom_data1, nom_data2])
+    return ord_data, nom_data
+  else:
+    return (ord_data1, ord_data2), (nom_data1, nom_data2)
 
 #This function retrieves the subsampled datasets generated earlier
 #by the sequence encoding module. These can be used to evaluate reproducibility
@@ -65,7 +68,34 @@ def retrieve_subsampled_dataset():
   subsample_ten_nom = [np.load('subsample_nom_%s.npy'%i) for i in range(0,5)]
   os.chdir(current_dir)
   return subsample_twenty_ord, subsample_twenty_nom, subsample_ten_ord, subsample_ten_nom
+
+#Calculate AUC-ROC for RH04 sequences in RH03 for both the training and
+#test sets.
+def calc_RH04_auc_train_test():
+  current_dir = os.getcwd()
+  os.chdir(os.path.join('..', 'models'))
+  with open('final_model', 'rb') as model_file:
+    ord_model = pickle.load(model_file)
+
+  with open('nominal_data_model', 'rb') as model_file:
+    nom_model = pickle.load(model_file)
+  os.chdir(current_dir)
+  ord_data, nom_data = retrieve_full_dataset(separate_train_test=True)
+
+  ytrue_ord_train, yscores_ord_train = auc_calc_scores(ord_model, ord_data[0])
+  print('Training set ordinal AUC: %s'%auc(ytrue_ord_train, yscores_ord_train))
+
+  ytrue_ord_test, yscores_ord_test = auc_calc_scores(ord_model, ord_data[1])
+  print('Test set ordinal AUC: %s'%auc(ytrue_ord_test, yscores_ord_test))
+
+  ytrue_nom_train, yscores_nom_train = auc_calc_probs(nom_model, nom_data[0])
+  print('Training set nominal AUC: %s'%auc(ytrue_nom_train, yscores_nom_train))
+
+  ytrue_nom_test, yscores_nom_test = auc_calc_probs(nom_model, nom_data[1])
+  print('Test set nominal AUC: %s'%auc(ytrue_nom_test, yscores_nom_test))
   
+
+
 #Plot the score distributions (primarily for ordinal regression but can
 #also be done for nominal classification).
 def plot_score_distributions():
@@ -82,6 +112,11 @@ def plot_score_distributions():
   class3only_ord = np.copy(y_ord)
   class3only_ord[np.argwhere(class3only_ord==3).flatten()]=2
   y_ord[np.argwhere(ord_data[:,183]==3)]=3
+
+  y_nom = nom_data[:,180]
+  class3only_nom = np.copy(y_nom)
+  class3only_nom[np.argwhere(class3only_nom==3).flatten()]=2
+  y_nom[np.argwhere(nom_data[:,181]==3)]=3
 
   #We are using a kernel density estimate or kdeplot from seaborn. The y-axis will
   #only indicate density relative to the rest of the distribution. We create two
@@ -106,10 +141,34 @@ def plot_score_distributions():
   plt.suptitle('KDE-smoothed score distribution using ordinal regression,\nRH04 marked')
   plt.show()
 
+
+  scores = nom_model.predict(nom_data)[0][:,-1].flatten()
+  sns.kdeplot(scores[np.argwhere(class3only_nom==0).flatten()],shade=True,color='purple',bw=0.02)
+  sns.kdeplot(scores[np.argwhere(class3only_nom==1).flatten()],shade=True,color='grey',bw=0.02)
+  sns.kdeplot(scores[np.argwhere(class3only_nom==2).flatten()],shade=True,color='green',bw=0.02)
+  plt.legend(['RH01', 'RH02', 'RH03', 'RH04'])
+  plt.xlabel('Score distribution')
+  plt.ylabel('Kernel density estimate')
+  plt.suptitle('KDE-smoothed score distribution using nominal classification,\nRH04 sequences unmarked')
+  plt.show()
+
+  sns.kdeplot(scores[np.argwhere(y_nom==0).flatten()],shade=True,color='purple',bw=0.02)
+  sns.kdeplot(scores[np.argwhere(y_nom==1).flatten()],shade=True,color='grey',bw=0.02)
+  sns.kdeplot(scores[np.argwhere(y_nom==2).flatten()],shade=True,color='green',bw=0.02)
+  sns.kdeplot(scores[np.argwhere(y_nom==3).flatten()],shade=True,color='red',bw=0.02)
+  plt.legend(['RH01', 'RH02', 'RH03', 'RH04'])
+  plt.xlabel('Score distribution')
+  plt.ylabel('Kernel density estimate')
+  plt.suptitle('KDE-smoothed score distribution using nominal classification,\nRH04 marked')
+  plt.show()
+
   #Now calculate ROC-AUC for the model for RH04 predictions.
   ytrue_ord, yscores_ord = auc_calc_scores(ord_model, ord_data)
   print('Ordinal AUC: %s'%auc(ytrue_ord, yscores_ord))
   fpr_ord, tpr_ord, _ = roc(ytrue_ord, yscores_ord)
+
+  ytrue_nom, yscores_nom = auc_calc_probs(nom_model, nom_data)
+  print('Nominal AUC: %s'%auc(ytrue_nom, yscores_nom))
 
   equal_spec = np.arange(1,-0.1,-0.1)
 
