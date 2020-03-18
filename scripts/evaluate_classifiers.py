@@ -20,21 +20,6 @@ def auc_calc_scores(model, data, class3only=True):
   true_class[np.argwhere(xprecutoff[:,183]==3).flatten()] = 1
   return true_class, scores
 
-#Use this function to retrieve class, score data for a nominal classification model
-#For the nominal classification model, the probability for RH03 is the "score".
-def auc_calc_probs(model, data, class3only=True):
-  #In general we are using the model to predict which sequences from the last sort,
-  #i.e. RH03, are strong binders (there is no point predicting which sequences
-  #from RH01 or RH02 will be strong binders because sequences in those sorts
-  #are weak by definition).
-  if class3only == True:
-    xprecutoff = data[np.argwhere(data[:,180]>=2).flatten(),:]
-  else:
-    xprecutoff = np.copy(data)
-  scores = model.predict(xprecutoff)[0][:,-1].flatten()
-  true_class = np.zeros((xprecutoff.shape[0]))
-  true_class[np.argwhere(xprecutoff[:,181]==3).flatten()] = 1
-  return true_class, scores
 
 #Function for loading the fulldataset to evaluate a model.
 def retrieve_full_dataset(separate_train_test = False):
@@ -43,15 +28,12 @@ def retrieve_full_dataset(separate_train_test = False):
   ord_data1 = np.load('9site_train.npy')
   ord_data2 = np.load('9site_test.npy')
 
-  nom_data1 = np.load('9site_nominal_class_train.npy')
-  nom_data2 = np.load('9site_nominal_class_test.npy')
   os.chdir(current_dir)
   if separate_train_test == False:
     ord_data = np.vstack([ord_data1, ord_data2])
-    nom_data = np.vstack([nom_data1, nom_data2])
-    return ord_data, nom_data
+    return ord_data
   else:
-    return (ord_data1, ord_data2), (nom_data1, nom_data2)
+    return (ord_data1, ord_data2)
 
 #This function retrieves the subsampled datasets generated earlier
 #by the sequence encoding module. These can be used to evaluate reproducibility
@@ -61,13 +43,11 @@ def retrieve_subsampled_dataset():
   current_dir = os.getcwd()
   os.chdir(os.path.join('..', 'processed_data', 'twenty_percent_subsampling'))
   subsample_twenty_ord = [np.load('subsample_ord_%s.npy'%i) for i in range(0,5)]
-  subsample_twenty_nom = [np.load('subsample_nom_%s.npy'%i) for i in range(0,5)]
   os.chdir(current_dir)
   os.chdir(os.path.join('..', 'processed_data', 'ten_percent_subsampling'))
   subsample_ten_ord = [np.load('subsample_ord_%s.npy'%i) for i in range(0,5)]
-  subsample_ten_nom = [np.load('subsample_nom_%s.npy'%i) for i in range(0,5)]
   os.chdir(current_dir)
-  return subsample_twenty_ord, subsample_twenty_nom, subsample_ten_ord, subsample_ten_nom
+  return subsample_twenty_ord, subsample_ten_ord
 
 #Calculate AUC-ROC for RH04 sequences in RH03 for both the training and
 #test sets.
@@ -77,98 +57,61 @@ def calc_RH04_auc_train_test():
   with open('final_model', 'rb') as model_file:
     ord_model = pickle.load(model_file)
 
-  with open('nominal_data_model', 'rb') as model_file:
-    nom_model = pickle.load(model_file)
   os.chdir(current_dir)
-  ord_data, nom_data = retrieve_full_dataset(separate_train_test=True)
+  ord_data = retrieve_full_dataset(separate_train_test=True)
 
   ytrue_ord_train, yscores_ord_train = auc_calc_scores(ord_model, ord_data[0])
   print('Training set ordinal AUC: %s'%auc(ytrue_ord_train, yscores_ord_train))
 
   ytrue_ord_test, yscores_ord_test = auc_calc_scores(ord_model, ord_data[1])
-  print('Test set ordinal AUC: %s'%auc(ytrue_ord_test, yscores_ord_test))
-
-  ytrue_nom_train, yscores_nom_train = auc_calc_probs(nom_model, nom_data[0])
-  print('Training set nominal AUC: %s'%auc(ytrue_nom_train, yscores_nom_train))
-
-  ytrue_nom_test, yscores_nom_test = auc_calc_probs(nom_model, nom_data[1])
-  print('Test set nominal AUC: %s'%auc(ytrue_nom_test, yscores_nom_test))
-  
+  print('Test set ordinal AUC: %s'%auc(ytrue_ord_test, yscores_ord_test))  
 
 
-#Plot the score distributions (primarily for ordinal regression but can
-#also be done for nominal classification).
+#Plot the score distributions.
 def plot_score_distributions():
   current_dir = os.getcwd()
   os.chdir(os.path.join('..', 'models'))
   with open('final_model', 'rb') as model_file:
     ord_model = pickle.load(model_file)
 
-  with open('nominal_data_model', 'rb') as model_file:
-    nom_model = pickle.load(model_file)
   os.chdir(current_dir)
-  ord_data, nom_data = retrieve_full_dataset()
+  ord_data = retrieve_full_dataset()
   y_ord = ord_data[:,184]
   class3only_ord = np.copy(y_ord)
   class3only_ord[np.argwhere(class3only_ord==3).flatten()]=2
   y_ord[np.argwhere(ord_data[:,183]==3)]=3
 
-  y_nom = nom_data[:,180]
-  class3only_nom = np.copy(y_nom)
-  class3only_nom[np.argwhere(class3only_nom==3).flatten()]=2
-  y_nom[np.argwhere(nom_data[:,181]==3)]=3
 
   #We are using a kernel density estimate or kdeplot from seaborn. The y-axis will
   #only indicate density relative to the rest of the distribution. We create two
   #plots, one with sequences that are RH04 marked and the other with them unmarked.
+  fig, (ax1, ax2) = plt.subplots(2,1)
   scores = ord_model.extract_hidden_rep(ord_data).numpy().flatten()
-  sns.kdeplot(scores[np.argwhere(class3only_ord==0).flatten()],shade=True,color='blue',bw=0.1)
-  sns.kdeplot(scores[np.argwhere(class3only_ord==1).flatten()],shade=True,color='orange',bw=0.1)
-  sns.kdeplot(scores[np.argwhere(class3only_ord==2).flatten()],shade=True,color='green',bw=0.1)
-  plt.legend(['RH01', 'RH02', 'RH03', 'RH04'])
-  plt.xlabel('Score distribution')
-  plt.ylabel('Kernel density estimate')
-  plt.suptitle('KDE-smoothed score distribution using ordinal regression,\nRH04 sequences unmarked')
+  sns.kdeplot(scores[np.argwhere(class3only_ord==0).flatten()],shade=True,color='blue',bw=0.1,ax=ax1)
+  sns.kdeplot(scores[np.argwhere(class3only_ord==1).flatten()],shade=True,color='orange',bw=0.1,ax=ax1)
+  sns.kdeplot(scores[np.argwhere(class3only_ord==2).flatten()],shade=True,color='green',bw=0.1,ax=ax1)
+  ax1.legend(['RH01', 'RH02', 'RH03', 'RH04'])
+  ax1.set_xlabel('Score distribution')
+  ax1.set_ylabel('Kernel density estimate')
+  ax1.set_title('KDE-smoothed score distribution using ordinal regression,\nRH04 sequences unmarked')
+
+  sns.kdeplot(scores[np.argwhere(y_ord==0).flatten()],shade=True,color='blue',bw=0.1,ax=ax2)
+  sns.kdeplot(scores[np.argwhere(y_ord==1).flatten()],shade=True,color='orange',bw=0.1,ax=ax2)
+  sns.kdeplot(scores[np.argwhere(y_ord==2).flatten()],shade=True,color='green',bw=0.1,ax=ax2)
+  sns.kdeplot(scores[np.argwhere(y_ord==3).flatten()],shade=True,color='red',bw=0.1,ax=ax2)
+  ax2.legend(['RH01', 'RH02', 'RH03', 'RH04'])
+  ax2.set_xlabel('Score distribution')
+  ax2.set_ylabel('Kernel density estimate')
+  ax2.set_title('KDE-smoothed score distribution using ordinal regression,\nRH04 marked')
   plt.show()
 
-  sns.kdeplot(scores[np.argwhere(y_ord==0).flatten()],shade=True,color='blue',bw=0.1)
-  sns.kdeplot(scores[np.argwhere(y_ord==1).flatten()],shade=True,color='orange',bw=0.1)
-  sns.kdeplot(scores[np.argwhere(y_ord==2).flatten()],shade=True,color='green',bw=0.1)
-  sns.kdeplot(scores[np.argwhere(y_ord==3).flatten()],shade=True,color='red',bw=0.1)
-  plt.legend(['RH01', 'RH02', 'RH03', 'RH04'])
-  plt.xlabel('Score distribution')
-  plt.ylabel('Kernel density estimate')
-  plt.suptitle('KDE-smoothed score distribution using ordinal regression,\nRH04 marked')
-  plt.show()
 
-
-  scores = nom_model.predict(nom_data)[0][:,-1].flatten()
-  sns.kdeplot(scores[np.argwhere(class3only_nom==0).flatten()],shade=True,color='purple',bw=0.02)
-  sns.kdeplot(scores[np.argwhere(class3only_nom==1).flatten()],shade=True,color='grey',bw=0.02)
-  sns.kdeplot(scores[np.argwhere(class3only_nom==2).flatten()],shade=True,color='green',bw=0.02)
-  plt.legend(['RH01', 'RH02', 'RH03', 'RH04'])
-  plt.xlabel('Score distribution')
-  plt.ylabel('Kernel density estimate')
-  plt.suptitle('KDE-smoothed score distribution using nominal classification,\nRH04 sequences unmarked')
-  plt.show()
-
-  sns.kdeplot(scores[np.argwhere(y_nom==0).flatten()],shade=True,color='purple',bw=0.02)
-  sns.kdeplot(scores[np.argwhere(y_nom==1).flatten()],shade=True,color='grey',bw=0.02)
-  sns.kdeplot(scores[np.argwhere(y_nom==2).flatten()],shade=True,color='green',bw=0.02)
-  sns.kdeplot(scores[np.argwhere(y_nom==3).flatten()],shade=True,color='red',bw=0.02)
-  plt.legend(['RH01', 'RH02', 'RH03', 'RH04'])
-  plt.xlabel('Score distribution')
-  plt.ylabel('Kernel density estimate')
-  plt.suptitle('KDE-smoothed score distribution using nominal classification,\nRH04 marked')
-  plt.show()
 
   #Now calculate ROC-AUC for the model for RH04 predictions.
   ytrue_ord, yscores_ord = auc_calc_scores(ord_model, ord_data)
   print('Ordinal AUC: %s'%auc(ytrue_ord, yscores_ord))
   fpr_ord, tpr_ord, _ = roc(ytrue_ord, yscores_ord)
 
-  ytrue_nom, yscores_nom = auc_calc_probs(nom_model, nom_data)
-  print('Nominal AUC: %s'%auc(ytrue_nom, yscores_nom))
 
   equal_spec = np.arange(1,-0.1,-0.1)
 
@@ -181,13 +124,13 @@ def plot_score_distributions():
 
 
 #This function retrieves the subsampled datasets (five subsampled at 20%, five subsampled
-#at 10%) and trains both an ordinal regression and a nominal classification model on
+#at 10%) and trains an ordinal regression model on
 #each of the subsampled datasets, then uses the resulting model to generate scores
 #for the FULL dataset and calculate AUC-ROC for prediction of RH04 sequences among
 #RH03 to evaluate performance.
 def evaluate_subsampling(use_weights=True):
-  twenty_ord, twenty_nom, ten_ord, ten_nom = retrieve_subsampled_dataset()
-  full_ord_data, full_nom_data = retrieve_full_dataset()
+  twenty_ord, ten_ord = retrieve_subsampled_dataset()
+  full_ord_data = retrieve_full_dataset()
   #Use same dropout and number of epochs for all to stay consistent.
   dropout, epochs, aucs = 0.3, 20, []
   current_dir = os.getcwd()
@@ -210,25 +153,6 @@ def evaluate_subsampling(use_weights=True):
     ytrue, yscores = auc_calc_scores(model, full_ord_data)
     aucs.append(auc(ytrue, yscores))
   output_file.write('Ordinal regression, 10 percent subsampling: AUC %s +/- %s'%(np.mean(aucs),
-                                                                     np.std(aucs)))
-  aucs = []
-  for i in range(0,5):
-    model = fullstack.NN(dropout=dropout, input_dim=180, l2=0.000)
-    losses = model.trainmod(twenty_nom[i],epochs=epochs, minibatch=250,
-                         lr=0.005, use_weights=use_weights)
-    ytrue, yscores = auc_calc_probs(model, full_nom_data)
-    aucs.append(auc(ytrue, yscores))
-  output_file.write('Nominal regression, 20 percent subsampling: AUC %s +/- %s'%(np.mean(aucs),
-                                                                     np.std(aucs)))
-
-  aucs = []
-  for i in range(0,5):
-    model = fullstack.NN(dropout=dropout, input_dim=180, l2=0.000)
-    losses = model.trainmod(ten_nom[i],epochs=epochs, minibatch=250,
-                         lr=0.005, use_weights=use_weights)
-    ytrue, yscores = auc_calc_probs(model, full_nom_data)
-    aucs.append(auc(ytrue, yscores))
-  output_file.write('Nominal regression, 10 percent subsampling: AUC %s +/- %s'%(np.mean(aucs),
                                                                      np.std(aucs)))
   os.chdir(current_dir)
   output_file.close()
