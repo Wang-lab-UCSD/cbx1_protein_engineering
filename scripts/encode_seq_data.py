@@ -78,8 +78,9 @@ def subsample(seqdict, subsample_percentage):
 
 def process_seqdict(seqdict, subsample=False, iteration=0):
     #We'll process the data twice -- once to generate the data matrix used by the nominal
-    #classification & random forest models, the other to generate the data matrix used by
-    #the ordinal regression model. The difference is how category is defined.
+    #classification, random forest and other models, the other to generate the data matrix used by
+    #the ordinal regression model. The difference is how category is defined. The data for the
+    #enrichment-based model is prepared separately.
     seqs_for_ord_reg, seqs_for_nominal_class = [], []
     for key in seqdict:
         seq_for_ord = np.zeros((1,186))

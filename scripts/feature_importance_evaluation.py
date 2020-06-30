@@ -1,8 +1,6 @@
 import numpy as np, matplotlib.pyplot as plt, seaborn as sns, sys, pickle, os
 from sklearn.metrics import matthews_corrcoef as mcc
 from sklearn.model_selection import train_test_split
-import fullstack_ord
-import fullstack_contextualord
 
 #Global, since we will use this throughout.
 aas = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P',
@@ -37,17 +35,49 @@ def train_contextual_regression():
     os.chdir(current_dir)
 
 def score_known_high_binders():
+    ord_data = retrieve_full_dataset()
     current_dir = os.getcwd()
-    os.chdir(os.path.join('..', 'models'))
+    os.chdir(os.path.join('..', 'final_models'))
     with open('final_model', 'rb') as model_file:
         ord_model = pickle.load(model_file)
+
+    with open('final_bin_model', 'rb') as model_file:
+        bin_model = pickle.load(model_file)
+
+    with open('final_rf_model', 'rb') as model_file:
+        rf_model = pickle.load(model_file)
+
+    with open('final_enrich_model', 'rb') as model_file:
+        enrich_model = pickle.load(model_file)
     os.chdir(current_dir)
     os.chdir(os.path.join('..', 'processed_data'))
     known_high_binders = np.load('known_high_binders_9site.npy')
     os.chdir(current_dir)
+    fullset_scores = ord_model.extract_hidden_rep(ord_data)
     scores = ord_model.extract_hidden_rep(known_high_binders)
-    print('Scores for known_high_binders:')
-    print(scores)
+    calc_print_percentiles(fullset_scores, scores, "Ordinal reg")
+    
+    fullset_scores = enrich_model.predict(ord_data)[1]
+    scores = enrich_model.predict(known_high_binders)[1]
+    calc_print_percentiles(fullset_scores, scores, "Enrichment")
+    
+    fullset_scores = rf_model.predict_proba(ord_data[:,0:180])[:,1]
+    scores = rf_model.predict_proba(known_high_binders[:,0:180])[:,1]
+    calc_print_percentiles(fullset_scores, scores, "Random forest")
+
+    fullset_scores = bin_model.predict(ord_data)[0]
+    scores = bin_model.predict(known_high_binders)[0]
+    calc_print_percentiles(fullset_scores, scores, "Bin NN")
+
+def calc_print_percentiles(all_scores, highbinder_scores, model_type):
+    print('%s scores for known_high_binders:'%model_type)
+    print(highbinder_scores)
+    print("Percentiles:")
+    percentiles = [100*all_scores[all_scores<highbinder_scores[i]].shape[0] / 
+                    all_scores.shape[0] for i in range(0, highbinder_scores.
+                        shape[0])]
+    print(percentiles)
+    print('\n')
 
 
 def gen_high_scoring_seq_feature_importance(ord_model, ord_data):
