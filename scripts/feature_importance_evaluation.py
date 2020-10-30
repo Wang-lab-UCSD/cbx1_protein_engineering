@@ -114,7 +114,7 @@ def gen_high_scoring_seq_feature_importance(ord_model, ord_data):
     best_positions = []
     for i in range(0,9):
         current_subset = feat_importances_cr[(20*i):(20*i+20)]
-        best_positions.append(np.argsort(current_subset)[-3:])
+        best_positions.append(np.argsort(current_subset)[-3:].tolist())
     return best_positions
 
 #This function will generate the "best bet" sequences using the top three amino acids at each position
@@ -130,32 +130,9 @@ def find_top_two_seqs():
         context_model = pickle.load(model_file)
     os.chdir(current_dir)
     best_positions = gen_high_scoring_seq_feature_importance(ord_model, ord_data)
-    #We COULD generate all possible 9-site variants that use the best bet amino acids using
-    #a recursive algorithm but honestly in this case it's simpler to just use a nested for loop.
-    seqs_of_interest = []
-    for i in range(0,3):
-        for j in range(0,3):
-            for k in range(0,3):
-                for m in range(0,3):
-                    for n in range(0,3):
-                        for o in range(0,3):
-                            for p in range(0,3):
-                                for q in range(0,3):
-                                    for r in range(0,3):
-                                        current_seq = np.zeros((180))
-                                        current_seq[best_positions[0][i]] = 1.0
-                                        current_seq[best_positions[1][j]+20] = 1.0
-                                        current_seq[best_positions[2][k]+40] = 1.0
-                                        current_seq[best_positions[3][m]+60] = 1.0
-                                        current_seq[best_positions[4][n]+80] = 1.0
-                                        current_seq[best_positions[5][o]+100] = 1.0
-                                        current_seq[best_positions[6][p]+120] = 1.0
-                                        current_seq[best_positions[7][q]+140] = 1.0
-                                        current_seq[best_positions[8][r]+160] = 1.0
-                                        seqs_of_interest.append(current_seq)
 
+    seqs_of_interest = np.stack(gen_candidate_seqs(best_positions))
 
-    seqs_of_interest = np.stack(seqs_of_interest)
     pred_scores = ord_model.extract_hidden_rep(seqs_of_interest).numpy().flatten()
     sorted_scores = np.argsort(pred_scores)[-2:]
     top_scorers = seqs_of_interest[sorted_scores,:]
@@ -191,3 +168,26 @@ def find_top_two_seqs():
     print('Best sequences:')
     print(mut1seq)
     print(mut2seq)
+
+
+#Helper function to generate all possible candidate sequences for scoring using
+#feature importance values.
+def gen_candidate_seqs(best_positions):
+    seqs_of_interest = []
+    count_array = [0 for 0 in len(best_positions)]
+    while count_array[-1] < len(best_positions[-1]):
+        current_seq = np.zeros((180))
+        for i in range(len(best_positions)):
+            current_seq[best_positions[i][count_array[i]] + 20*i] = 1.0
+        seqs_of_interest.append(current_seq)
+        for i in range(len(best_positions)):
+            count_array[i] += 1
+            if i == len(options) - 1:
+                break
+            if count_array[i] > len(best_positions[i]) - 1:
+                count_array[i] = 0
+            else:
+                break
+    return seqs_of_interest
+
+    
